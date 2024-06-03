@@ -1,12 +1,13 @@
 'use strict';
 
+const fs = require('fs');
+
 require('dotenv').config();
 
 const {
   BASE_URL,
   ACCOUNT_ID,
   ACCESS_TOKEN,
-  TEMPLATE_ID,
 } = process.env;
 
 const instance = require('axios').create({
@@ -17,7 +18,7 @@ const instance = require('axios').create({
 });
 
 (async () => {
-  if (!BASE_URL || !ACCOUNT_ID || !ACCESS_TOKEN || !TEMPLATE_ID) {
+  if (!BASE_URL || !ACCOUNT_ID || !ACCESS_TOKEN) {
     console.error('Missing env vars!');
 
     return;
@@ -27,11 +28,38 @@ const instance = require('axios').create({
   const initialName = 'Yulian Ovdey';
   const email = 'yulian.ovdey+1717430585029@orchard.com';
 
-  async function createEnvelopeFromTemplate() {
+  async function createEnvelope() {
     const result = await instance.post('/envelopes', {
       status: 'created',
       emailSubject: 'Please sign',
-      templateId: TEMPLATE_ID,
+      documents: [
+        {
+          documentId: 1,
+          name: 'Test Document',
+          documentBase64: fs.readFileSync('Empty Test PDF.pdf').toString('base64'),
+          fileExtension: 'pdf',
+        },
+      ],
+      recipients: {
+        signers: [
+          {
+            name: initialName,
+            recipientId: 1,
+            email,
+            tabs: {
+              signHereTabs: [
+                {
+                  documentId: 1,
+                  pageNumber: 1,
+                  anchorXOffset: 0,
+                  anchorYOffset: 0,
+                  name: 'Please sign here',
+                },
+              ],
+            },
+          },
+        ],
+      },
     });
 
     return result.data.envelopeId;
@@ -76,12 +104,49 @@ const instance = require('axios').create({
     console.log(result.data);
   }
 
-  const envelopeId = await createEnvelopeFromTemplate();
+  const envelopeId = await createEnvelope();
   await updateEnvelope(envelopeId);
-  console.log(envelopeId);
   await createRecipientView(envelopeId);
 
-  setTimeout(async () => {
+  // Wait 30 seconds
+  //
+  // During this timeout - visit the recipient URL from the call above and
+  // update the recipient's name in the "Adopt Your Signature" modal
+  await new Promise((resolve) => {
+    setTimeout(resolve, 30000);
+  });
+
+  // Try to create another recipient view - this will fail with "UNKNOWN_ENVELOPE_RECIPIENT"
+  try {
     await createRecipientView(envelopeId);
-  }, 20000);
+  } catch (e) {
+    console.log(`Creating another recipient view failed:`, e.response.data.message);
+  }
+
+  // Try to delete the captive recipient using the original recipient name
+  const result = await instance.delete(`/captive_recipients/signature`, {
+    data: {
+      captiveRecipients: [
+        {
+          clientUserId,
+          email,
+          userName: initialName,
+        },
+      ],
+    },
+  });
+
+  // {
+  //   captiveRecipients: [
+  //     {
+  //       email: 'yulian.ovdey+1717430585029@orchard.com',
+  //       userName: 'Yulian Ovdey',
+  //       clientUserId: '1717434736976'
+  //     }
+  //   ]
+  // }
+  console.log(result.data);
+
+  // Try to create another recipient view - this will fail with "UNKNOWN_ENVELOPE_RECIPIENT"
+  await createRecipientView(envelopeId);
 })();
