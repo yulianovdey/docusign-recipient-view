@@ -25,12 +25,12 @@ const instance = require('axios').create({
   }
 
   const clientUserId = Date.now();
-  const initialName = 'Yulian Ovdey';
+  const name = 'Yulian Ovdey';
   const email = 'yulian.ovdey+1717430585029@orchard.com';
 
   async function createEnvelope() {
     const result = await instance.post('/envelopes', {
-      status: 'created',
+      status: 'sent',
       emailSubject: 'Please sign',
       documents: [
         {
@@ -43,8 +43,9 @@ const instance = require('axios').create({
       recipients: {
         signers: [
           {
-            name: initialName,
+            name,
             recipientId: 1,
+            clientUserId,
             email,
             tabs: {
               signHereTabs: [
@@ -71,32 +72,13 @@ const instance = require('axios').create({
     return envelope.data;
   }
 
-  async function updateEnvelope(envelopeId) {
-    const result = await getEnvelope(envelopeId);
-
-    await instance.put(`/envelopes/${envelopeId}`, {
-      status: 'sent',
-      recipients: {
-        signers: [
-          Object.assign(result.recipients.signers[0], {
-            name: initialName,
-            email,
-            clientUserId,
-          }),
-        ],
-      },
-    });
-  }
-
   async function createRecipientView(envelopeId) {
     const envelope = await getEnvelope(envelopeId);
     const signer = envelope.recipients.signers[0];
 
     const result = await instance.post(`/envelopes/${envelopeId}/views/recipient`, {
       clientUserId: signer.clientUserId,
-      recipientId: signer.recipientId,
-      userName: signer.name,
-      email: signer.email,
+      userId: signer.userId,
       authenticationMethod: 'None',
       returnUrl: 'http://localhost:3000',
     });
@@ -105,7 +87,6 @@ const instance = require('axios').create({
   }
 
   const envelopeId = await createEnvelope();
-  await updateEnvelope(envelopeId);
   await createRecipientView(envelopeId);
 
   // Wait 30 seconds
@@ -119,6 +100,10 @@ const instance = require('axios').create({
   // Try to create another recipient view - this will fail with "UNKNOWN_ENVELOPE_RECIPIENT"
   try {
     await createRecipientView(envelopeId);
+
+    console.log('Success!');
+
+    return;
   } catch (e) {
     console.log(`Creating another recipient view failed:`, e.response.data.message);
   }
@@ -130,7 +115,7 @@ const instance = require('axios').create({
         {
           clientUserId,
           email,
-          userName: initialName,
+          userName: name,
         },
       ],
     },
@@ -148,5 +133,9 @@ const instance = require('axios').create({
   console.log(result.data);
 
   // Try to create another recipient view - this will fail with "UNKNOWN_ENVELOPE_RECIPIENT"
-  await createRecipientView(envelopeId);
+  try {
+    await createRecipientView(envelopeId);
+  } catch (e) {
+    console.log(`Creating another recipient view failed:`, e.response.data.message);
+  }
 })();
